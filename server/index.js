@@ -114,3 +114,53 @@ app.post("/signup", async (req, res) => {
     }
 });
 
+app.post("/login", async (req, res) => {
+    const userdatasent = {
+        email: req.body.email || "empty",
+        password: req.body.password || "empty",
+    }
+    if (userdatasent.email === "empty" || userdatasent.password === "empty") {
+        return res.status(400).json({ error: "Username and password are required." });
+    }
+    const user = await User.findOne({ email: req.body.email.toLowerCase() });
+    if (!user) {
+        return res.status(404).json({ error: "User not found" });
+    }
+    async function verifyPassword(inputPassword, storedHashedPassword) {
+        try {
+            const isMatch = await bcrypt.compare(inputPassword, storedHashedPassword);
+            return isMatch;
+        } catch (error) {
+            console.error('Password comparison error:', error);
+            return false;
+        }
+    }
+    const isUserAuthentic = await verifyPassword(userdatasent.password, user.password);
+    if (isUserAuthentic) {
+        const token = jwt.sign(
+            { email: user.email, username: user.username },
+            jwtsecretkey,
+            { expiresIn: "1h" }
+        );
+        try {
+            const updatedUser = await User.findOneAndUpdate(
+                { email: user.email },
+                { accesstoken: token },
+                { new: true }
+            );
+            if (!updatedUser) {
+                console.log("User not found");
+            } else {
+                console.log("Access token updated:", updatedUser);
+            }
+        } catch (err) {
+            console.error("Error updating access token:", err);
+            return res.status(401).json({ error: "Error encountered while signing up the user" });
+        }
+        return res.json({ message: "Login successful", token });
+    }
+    else {
+        return res.status(401).json({ error: "Invalid credentials" });
+    }
+})
+
