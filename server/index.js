@@ -1,1 +1,116 @@
 // @shayanur
+const express = require("express");
+const crypto = require('crypto');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
+const dotenv = require("dotenv");
+const multer = require("multer");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { GetObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const app = express();
+const mongoose = require("mongoose");
+const User = require("./models/user");
+
+app.use(express.json());
+dotenv.config();
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+const bucketName = process.env.BUCKET_NAME;
+const region = process.env.BUCKET_REGION;
+const accessKeyId = process.env.ACCESS_KEY;
+const secretAccessKey = process.env.SECRET_ACCESS_KEY;
+const s3Client = new S3Client({
+    region,
+    credentials: {
+        accessKeyId,
+        secretAccessKey
+    }
+})
+
+const mongodbURL = process.env.mongodbURL;
+async function main() {
+    try {
+
+        await mongoose.connect(mongodbURL, { dbName: "fileflash" });
+        console.log("***connected***");
+    } catch (err) {
+        console.log(err);
+    }
+}
+main();
+const jwtsecretkey = "@ADBKSM If the opposition disarms, well and good. If it refuses to disarm, we shall disarm it ourselves.@";
+
+app.get("/", (req, res) => {
+    const myobject = {
+        working: "yes",
+        myarray: [`Response time ${Date.now()}`]
+    }
+    const myjson = JSON.stringify(myobject)
+    res.send(myjson);
+})
+
+app.post("/signup", async (req, res) => {
+    const body = req.body;
+    console.log("signup body:", body);
+    const generateHash = (input) => {
+        const hash = crypto.createHash('sha256');
+        hash.update(input);
+        return hash.digest('hex');
+    }
+    // @comradekaushik SHA-256 is a cryptographic hash function that produces a 64-character hexadecimal string.
+    const hashingpasswords = async (password) => {
+        try {
+            const saltRounds = 10;
+            const salt = await bcrypt.genSalt(saltRounds);
+            const hashedPassword = await bcrypt.hash(`${password}`, salt);
+            return hashedPassword;
+        } catch (err) {
+            console.error('Error while hashing passwords with bcypt in /signup path:', err);
+
+        }
+    }
+    const hashedPassword = await hashingpasswords(req.body.password);
+    const data = [
+        {
+            "username": req.body.username,
+            "userid": generateHash(req.body.username),
+            "email": req.body.email,
+            "password": hashedPassword,
+        },
+    ];
+
+    try {
+        const result = await User.findOne({ username: req.body.username.toLowerCase() });
+        if (result) {
+            res.json({ alreadyregistered: 'true', registered: 'false' });
+        }
+        const insertedresult = await User.insertMany(data);
+        if (insertedresult) {
+            res.json({ registered: 'true', username: data[0].username, userid: data[0].userid, message: "user was sucessfully registered" });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("path: /signup Error inserting users , A mongoose or mongodb error encontered ");
+    }
+
+    try {
+        await transporter.sendMail({
+            from: '"fileflash app" <adityakm5500@gmail.com>',
+            to: body.email,
+            subject: "Signup Successful 🎉",
+            text: `Welcome ${body.username || "User"}! Your signup was successfull.`,
+            html: `
+                <h3>Welcome ${body.username || "User"} 🎉<h3>
+                <p>We're excited to have you onboard. Your signup was succesfull!</p>
+                <p><b>Date:</b> ${new Date().toLocaleString()}</p>
+            `
+        });
+        // res.json({ signup: "successful", emailSent: true });
+    } catch (err) {
+        console.error("Email error: ", err);
+        // res.status(500).json({ signup: "failed", error: "Email not sent" });
+    }
+});
+
