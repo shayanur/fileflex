@@ -206,4 +206,43 @@ app.post("/upload/file",upload.single('file'), async(req, res) => {
     }
 })
 
+app.get("/download/file/:fileid", async(req, res) => {
+    const id = req.params.fileid;
+    try {
+        const file = await File.findOne({ fileId: id });
+        if (!file) {
+            return res.status(404).send("File Not Found, It has either been deleted or expired");
+        }
+        const fileObj = file.toObject();
+        fileObj.imageUrl = await getSignedUrl(
+            s3Client,
+            new GetObjectCommand({
+                Bucket: bucketName,
+                Key: file.fileName
+            }),
+            { expiresIn: 900 } // 900 seconds
+        );
+        res.send(fileObj);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error fetching post");
+    }
+
+})
+app.delete("/delete/file/:fileid", (req, res) => {
+
+})
+app.get("/files",async(req,res)=>{
+    res.json({"message": "work undergoing"})
+})
+
+
+
+app.listen(8081, () => {
+    console.log(`Server Started ${Date.now()}`);
+
+})
+
+
+
 
