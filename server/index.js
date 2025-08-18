@@ -164,3 +164,47 @@ app.post("/login", async (req, res) => {
     }
 })
 
+app.post("/upload/file",upload.single('file'), async(req, res) => {
+    const generateHash = (input) => {
+        const hash = crypto.createHash('sha256');
+        hash.update(input);
+        return hash.digest('hex');
+    }
+    const generateFileName = (bytes = 32) => crypto.randomBytes(bytes).toString('hex');
+    const currentTime = new Date();
+    const timeString = currentTime.toISOString()();
+    try {
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({"message" : "No file uploaded"});
+        }
+        const description = req.body.description;
+        const email = req.body.email;
+        if(!email){
+            return res.status(400).json({"message" : "No Email Provided"});
+        }
+        const fileName = `${generateHash(email)}${timeString}${generateFileName()}${Math.round(Math.random()*999)}`;
+        const fileBuffer = file.buffer;
+        const fileid = `${generateFileName(48)}${generateHash(`${email}${timeString}`)}${Math.round(Math.random()*9999)}`;
+        const uploadParams = {
+            Bucket: bucketName,
+            Body: fileBuffer,
+            Key: fileName,
+            ContentType: file.mimetype
+        };
+        await s3Client.send(new PutObjectCommand(uploadParams));
+        const fileDoc = await File.insertMany([{ 
+            email: email,
+            description: description,
+            fileid: fileid,
+            filename : fileName,
+        }]);
+        res.send(fileDoc);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error Uploading files");
+    }
+})
+
+
+
