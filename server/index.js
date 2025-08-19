@@ -126,42 +126,52 @@ app.post("/login", async (req, res) => {
     if (!user) {
         return res.status(404).json({ error: "User not found" });
     }
-    async function verifyPassword(inputPassword, storedHashedPassword) {
+
+    //@Saurav
+    async function validatePassword(inputPassword, storedHashedPassword) {
         try {
-            const isMatch = await bcrypt.compare(inputPassword, storedHashedPassword);
-            return isMatch;
-        } catch (error) {
-            console.error('Password comparison error:', error);
+            return await bcrypt.compare(inputPassword, storedHashedPassword);
+        } catch (err) {
+            console.error("Error during password validation:", err);
             return false;
         }
     }
-    const isUserAuthentic = await verifyPassword(userdatasent.password, user.password);
-    if (isUserAuthentic) {
-        const token = jwt.sign(
-            { email: user.email, username: user.username },
-            jwtsecretkey,
-            { expiresIn: "1h" }
-        );
+
+    const isAuthenticated = await validatePassword(userdatasent.password, user.password);
+
+    if (isAuthenticated) {
+        const payload = {
+            email: user.email,
+            username: user.username
+        };
+
+        const accessToken = jwt.sign(payload, jwtsecretkey, { expiresIn: '2h' });
+
         try {
-            const updatedUser = await User.findOneAndUpdate(
+            const result = await User.findOneAndUpdate(
                 { email: user.email },
-                { accesstoken: token },
+                { accesstoken: accessToken },
                 { new: true }
             );
-            if (!updatedUser) {
-                console.log("User not found");
+
+            if (!result) {
+                console.warn("No matching user found to update token.");
             } else {
-                console.log("Access token updated:", updatedUser);
+                console.log("Token successfully updated for user:", result);
             }
-        } catch (err) {
-            console.error("Error updating access token:", err);
-            return res.status(401).json({ error: "Error encountered while signing up the user" });
+        } catch (updateErr) {
+            console.error("Failed to update token in database:", updateErr);
+            return res.status(401).json({ error: "An error occurred during user login." });
         }
-        return res.json({ message: "Login successful", token });
+
+        return res.json({
+            message: "Login successful",
+            token: accessToken
+        });
+    } else {
+        return res.status(401).json({ error: "Incorrect email or password." });
     }
-    else {
-        return res.status(401).json({ error: "Invalid credentials" });
-    }
+
 })
 
 app.post("/upload/file",upload.single('file'), async(req, res) => {
